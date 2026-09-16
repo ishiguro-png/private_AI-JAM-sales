@@ -1,0 +1,9 @@
+{
+  "name": "private-ai-jam-sales",
+  "version": "1.0.0",
+  "private": true,
+  "description": "代理店売上管理シートと収納明細書(PDF)の自動確認フロー(Google Apps Script)",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\""
+  }
+}
