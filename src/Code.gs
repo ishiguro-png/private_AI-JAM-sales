@@ -72,27 +72,43 @@ function runReconciliation() {
  * 顧客ID+金額で1件ずつ突合し、結果を実行ログ(コンソール)に出力する。
  * シートへの書き込みは行わない(レポート出力のみ)。
  *
- * フォルダ内に複数のCSVがある場合、同じ「消し込み待ち」行が複数ファイルに対して
- * 二重に「入金確認OK」と判定されないよう、この実行内で既に一致した行は
- * alreadyMatchedRows に積み増して後続ファイルの突合対象から除外する。
+ * 実際のスプレッドシートは月ごとに別タブ(例: "2608")に分かれているため、
+ * CSVごとにその集計期間から対象タブを都度特定する(findCsvTargetSheet)。
+ * 同じタブを複数のCSVで処理する場合に、同じ「消し込み待ち」行が二重に
+ * 「入金確認OK」と判定されないよう、タブ名ごとにalreadyMatchedRowsを分けて管理する。
  */
 function runCsvReconciliation() {
   var ui = SpreadsheetApp.getUi();
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  var targetSheet = findCsvTargetSheet(spreadsheet, CONFIG);
-  var rows = readSheetRows(targetSheet);
-  var alreadyMatchedRows = new Set();
+
+  var rowsBySheetName = {};
+  var matchedRowsBySheetName = {};
 
   var run = processFolderFiles(CONFIG.CSV_FOLDER_ID, MimeType.CSV, function (file) {
     var text = readCsvFileText(file.getId());
     var parsed = parseSbpsStatementCsv(text);
-    var result = reconcileWithCsv(rows, parsed.transactions, CONFIG, alreadyMatchedRows);
+
+    var expectedSheetName = expectedSheetNameForPeriod(parsed.summary.periodFrom);
+    var targetSheet = findCsvTargetSheet(spreadsheet, CONFIG, expectedSheetName);
+    var sheetKey = targetSheet.getName();
+
+    if (!rowsBySheetName[sheetKey]) {
+      rowsBySheetName[sheetKey] = readSheetRows(targetSheet);
+      matchedRowsBySheetName[sheetKey] = new Set();
+    }
+
+    var result = reconcileWithCsv(
+      rowsBySheetName[sheetKey],
+      parsed.transactions,
+      CONFIG,
+      matchedRowsBySheetName[sheetKey]
+    );
     var report = formatCsvReconcileReport(result, parsed.summary);
 
-    Logger.log('--- ' + file.getName() + ' ---\n' + report);
+    Logger.log('--- ' + file.getName() + '(対象タブ: ' + sheetKey + ') ---\n' + report);
 
     result.matched.forEach(function (m) {
-      alreadyMatchedRows.add(m.row);
+      matchedRowsBySheetName[sheetKey].add(m.row);
     });
 
     var issueCount =
@@ -100,7 +116,10 @@ function runCsvReconciliation() {
       result.unmatchedTransactions.length +
       result.rowsMissingCustomerId.length +
       result.unidentifiedTransactions.length;
-    return file.getName() + ': 入金確認OK ' + result.matched.length + '件 / 要確認 ' + issueCount + '件';
+    return (
+      file.getName() + '(タブ:' + sheetKey + '): 入金確認OK ' + result.matched.length +
+      '件 / 要確認 ' + issueCount + '件'
+    );
   });
 
   if (run.fileCount === 0) {
