@@ -69,28 +69,31 @@ test('formatCsvReconcileReport はお振込金額の整合性チェックを冒�
   assert.match(report, /要確認の項目があります/);
 });
 
-test('reconcileWithCsv は 顧客ID+金額 が一致する「CSV出力済み=未」の行を消し込む(ただし返金で相殺された売上は除く)', () => {
+test('reconcileWithCsv は実データの2608タブ(対象月=2026年08月)3行を¥23,034ぶん正しく全件消し込む', () => {
   const { transactions, sheetRows } = loadFixtures();
   const result = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
 
-  // 決済完了×CSV出力済み=未 の行は5件(済の行・解約の行は対象外)
-  assert.equal(result.pendingRowCount, 5);
-  // kibidango(C6A55F015547D5)の売上8件は、実データでは全8件が同額返金され純額ゼロのため、
-  // 「入金確認OK」にはならない。一致するのはファイルフォックス・N-supportの2件のみ
-  assert.equal(result.matched.length, 2);
+  // 決済完了×CSV出力済み=未 の行は7件(済の行・解約の行は対象外)
+  assert.equal(result.pendingRowCount, 7);
+  // 2608タブの3行(ファイルフォックス・N-support・デルフィーノケア)は、
+  // このCSV(8月分の集計期間)とそのまま対応するのですべて一致する
+  assert.equal(result.matched.length, 3);
 
   const matchedCustomerIds = result.matched.map((m) => m.row['顧客ID']).sort();
-  assert.deepEqual(matchedCustomerIds, ['C6A50A28C2A633', 'C6A52E8C24E3B5']);
+  assert.deepEqual(matchedCustomerIds, ['C6A50A28C2A633', 'C6A52E8C24E3B5', 'C6A5597B7D3A3D']);
+
+  const matchedTotal = result.matched.reduce((sum, m) => sum + m.transaction.amount, 0);
+  assert.equal(matchedTotal, 23034);
 });
 
-test('reconcileWithCsv はCSVに対応する入金が見つからない行を unmatchedRows に入れる(返金で相殺された分を含む)', () => {
+test('reconcileWithCsv はCSVに対応する入金が見つからない行を unmatchedRows に入れる(返金で相殺された2609タブの契約を含む)', () => {
   const { transactions, sheetRows } = loadFixtures();
   const result = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
 
-  // シートにしかいない架空顧客(1件) + 返金で相殺されたkibidangoの2行
-  assert.equal(result.unmatchedRows.length, 3);
+  // シートにしかいない架空顧客(1件) + 返金で相殺されたkibidangoの2行 + 西新宿ドットネット(1件)
+  assert.equal(result.unmatchedRows.length, 4);
   const unmatchedCustomerIds = result.unmatchedRows.map((r) => r['顧客ID']).sort();
-  assert.deepEqual(unmatchedCustomerIds, ['C6A55F015547D5', 'C6A55F015547D5', 'C6A99999999999']);
+  assert.deepEqual(unmatchedCustomerIds, ['C6A55F015547D5', 'C6A55F015547D5', 'C6A57145E7886A', 'C6A99999999999']);
 });
 
 test('reconcileWithCsv は決済エラー等で同額返金された売上を offsetByRefund に分離し、黙って「一致」にしない', () => {
@@ -114,7 +117,7 @@ test('reconcileWithCsv は「CSV出力済み=済」や「決済完了以外」�
     .map((m) => m.row['契約ID'])
     .concat(result.unmatchedRows.map((r) => r['契約ID']));
 
-  assert.ok(!consideredContractIds.includes('7140f5dd-9ced-42d5-a25c-77f6e19c5eb6'), 'CSV出力済み=済の行は対象外');
+  assert.ok(!consideredContractIds.includes('already-done-row'), 'CSV出力済み=済の行は対象外');
   assert.ok(!consideredContractIds.includes('cancelled-row'), '解約ステータスの行は対象外');
 });
 
