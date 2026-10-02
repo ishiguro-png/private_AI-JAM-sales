@@ -25,8 +25,14 @@ function verifyTransferAmount(summary) {
 }
 
 /**
- * シートの「消し込み待ち」契約行(ステータス=決済完了 かつ CSV出力済み=未)を、
- * CSVの取引明細(売上レコード)と「顧客ID + 金額」で突き合わせる。
+ * シートの「消し込み待ち」契約行(ステータス=決済完了。「CSV出力済み」列が
+ * ある場合は、さらに「未」の行に絞り込む)を、CSVの取引明細(売上レコード)と
+ * 「顧客ID + 金額」で突き合わせる。
+ *
+ * 「CSV出力済み」列は一部のタブ(例: 2608)にしか存在せず、標準の形式
+ * (例: 2609)には無い。列が無いタブでは、ステータスだけで対象行を絞り込む
+ * (タブ自体がCSVの集計期間ごとに分かれているため、タブ内の全行をその
+ * タブに対応するCSV1枚と突き合わせれば十分で、追加の消し込み済みフラグは不要)。
  *
  * 考え方:
  *  - シート側: まだ入金確認できていない契約の一覧(予定表)
@@ -64,12 +70,15 @@ function reconcileWithCsv(sheetRows, transactions, config, alreadyMatchedRows) {
     return excludedRows.indexOf(row) !== -1; // Array
   };
 
+  // 「CSV出力済み」列は一部のタブ(例: 2608)にしか存在しない。
+  // 列が無いタブ(row[...]がundefined)では、この条件では絞り込まず
+  // ステータスだけで判定する。列があるタブでは、従来通り「済」の行を除外する。
   var pendingCandidates = sheetRows.filter(function (row) {
-    return (
-      row['ステータス'] === config.COMPLETED_STATUS &&
-      row[config.CSV_EXPORTED_COLUMN] === config.CSV_EXPORTED_PENDING_VALUE &&
-      !isAlreadyMatchedRow(row)
-    );
+    if (row['ステータス'] !== config.COMPLETED_STATUS) return false;
+    if (isAlreadyMatchedRow(row)) return false;
+    var exportFlag = row[config.CSV_EXPORTED_COLUMN];
+    if (exportFlag !== undefined && exportFlag !== config.CSV_EXPORTED_PENDING_VALUE) return false;
+    return true;
   });
 
   var pendingRows = pendingCandidates.filter(function (row) {

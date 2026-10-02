@@ -22,6 +22,27 @@ function loadFixtures() {
   return { summary, transactions, sheetRows };
 }
 
+test('reconcileWithCsv は「CSV出力済み」列が無い標準形式のタブ(例: 2609)でも、ステータスだけで対象行を判定して正しく消し込む', () => {
+  const { transactions } = loadFixtures();
+
+  // 標準形式(2609など)を再現: CSV出力済み列そのものが存在しない
+  const standardFormatRows = [
+    { '契約ID': 'a', '顧客ID': 'C6A50A28C2A633', '顧客名': '株式会社ファイルフォックス八王子', '合計': '¥7,678', 'ステータス': '決済完了' },
+    { '契約ID': 'b', '顧客ID': 'C6A52E8C24E3B5', '顧客名': '株式会社N-support', '合計': '¥7,678', 'ステータス': '決済完了' },
+    { '契約ID': 'c', '顧客ID': 'C6A5597B7D3A3D', '顧客名': '株式会社デルフィーノケア', '合計': '¥7,678', 'ステータス': '決済完了' },
+    { '契約ID': 'd', '顧客ID': 'C6A99999999999', '顧客名': 'シートにしかいない架空顧客', '合計': '¥9,999', 'ステータス': '決済完了' },
+    { '契約ID': 'e', '顧客ID': 'C6A00000000000', '顧客名': '架空の解約顧客', '合計': '¥7,678', 'ステータス': '解約' },
+  ];
+
+  const result = ctx.reconcileWithCsv(standardFormatRows, transactions, CONFIG);
+
+  // CSV出力済み列が無くても、ステータス=決済完了の4行が対象になる(解約行は除く)
+  assert.equal(result.pendingRowCount, 4);
+  assert.equal(result.matched.length, 3);
+  assert.equal(result.unmatchedRows.length, 1);
+  assert.equal(result.unmatchedRows[0]['顧客ID'], 'C6A99999999999');
+});
+
 test('verifyTransferAmount は実際の収納明細CSVで「取扱金額-手数料-消費税額=お振込金額」が成立することを確認する', () => {
   const { summary } = loadFixtures();
   const check = ctx.verifyTransferAmount(summary);

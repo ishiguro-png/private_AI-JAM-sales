@@ -20,7 +20,10 @@ var CONFIG = {
   // (PDF_FOLDER_IDと同じフォルダでも構わない)
   CSV_FOLDER_ID: 'PUT_YOUR_DRIVE_FOLDER_ID_HERE',
 
-  // CSV突合の消し込み状況を表す列名と、各状態を表す文字列
+  // CSV突合の消し込み状況を表す列名と、各状態を表す文字列。
+  // 標準のタブ形式(例: 2609)にはこの列が無いため、列が存在しないタブでは
+  // 無視され、ステータスだけで対象行を判定する。一部のタブ(例: 2608)に
+  // この列がある場合は、「済」の行を突合対象から除外するために使われる。
   CSV_EXPORTED_COLUMN: 'CSV出力済み',
   CSV_EXPORTED_PENDING_VALUE: '未',
   CSV_EXPORTED_DONE_VALUE: '済',

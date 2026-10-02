@@ -109,11 +109,13 @@ function expectedSheetNameForPeriod(periodFrom) {
 }
 
 /**
- * 「顧客ID」「CSV出力済み」「ステータス」「合計」列を持つシートを探す(CSV突合用)。
+ * 「顧客ID」「ステータス」「合計」列を持つシートを探す(CSV突合用)。
+ * 「CSV出力済み」列は一部のタブ(例: 2608)にしかない任意項目のため、
+ * 必須列には含めない(reconcileWithCsv側で、列があれば使う・無ければ
+ * ステータスだけで判定する、という形で吸収する)。
  *
- * 実際のスプレッドシートは月ごとに別タブ(例: "2608")に分かれており、
- * かつタブごとに列構成が異なる(CSV出力済み列があるタブ・ないタブが混在する)。
- * そのため「列構成だけで1つに絞り込む」自動探索には頼らず、
+ * 実際のスプレッドシートは月ごとに別タブ(例: "2608"、標準形式は"2609")に
+ * 分かれているため、「列構成だけで1つに絞り込む」自動探索には頼らず、
  * CSVの集計期間から期待されるタブ名(例: 2026/08→"2608")を直接指定して探す。
  *
  * 優先順位:
@@ -124,7 +126,7 @@ function expectedSheetNameForPeriod(periodFrom) {
  * GAS専用のI/O関数。
  */
 function findCsvTargetSheet(spreadsheet, config, expectedSheetName) {
-  var requiredHeaders = ['顧客ID', config.CSV_EXPORTED_COLUMN, 'ステータス', '合計'];
+  var requiredHeaders = ['顧客ID', 'ステータス', '合計'];
 
   var byConfigName = resolveNamedSheet(spreadsheet, config.TARGET_SHEET_NAME, requiredHeaders);
   if (byConfigName) return byConfigName;
@@ -135,8 +137,8 @@ function findCsvTargetSheet(spreadsheet, config, expectedSheetName) {
       if (!sheetHasHeaders(sheet, requiredHeaders)) {
         throw new Error(
           'タブ「' + expectedSheetName + '」は見つかりましたが、CSV自動照合に必要な列 [' +
-          requiredHeaders.join(', ') + '] がありません。このタブではまだ「CSV出力済み」による' +
-          '消し込み運用が設定されていない可能性があります。'
+          requiredHeaders.join(', ') + '] がありません。想定外のタブ構成の可能性があるため、' +
+          '列構成を確認してください。'
         );
       }
       return sheet;

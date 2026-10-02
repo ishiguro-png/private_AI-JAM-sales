@@ -84,15 +84,20 @@ test('findCsvTargetSheet は実際のスプレッドシート構成(月ごとに
   assert.equal(found.getName(), '2608');
 });
 
-test('findCsvTargetSheet は期待されるタブは存在するがCSV出力済み列が無い場合、タブ名を名指しでエラーにする', () => {
-  // 2609タブはまだCSV出力済み列による運用が設定されていない、という実際の状態を再現
+test('findCsvTargetSheet は「CSV出力済み」列が無いタブ(標準形式)でも、顧客ID/ステータス/合計があれば正常に見つける', () => {
+  // 標準のタブ形式(例: 2609)にはCSV出力済み列が無い。これは異常ではなく正常なタブ構成として扱う
   const sheet2609 = fakeSheet('2609', ['対象月', '顧客名', '顧客ID', '代理店', '親代理店', 'サービス名', '合計', '支払方法', 'ステータス']);
   const spreadsheet = fakeSpreadsheet([sheet2609]);
 
-  assert.throws(
-    () => ctx.findCsvTargetSheet(spreadsheet, CSV_CONFIG, '2609'),
-    /タブ「2609」は見つかりましたが.*CSV出力済み/
-  );
+  const found = ctx.findCsvTargetSheet(spreadsheet, CSV_CONFIG, '2609');
+  assert.equal(found.getName(), '2609');
+});
+
+test('findCsvTargetSheet は期待されるタブが見つかっても顧客ID/ステータス/合計すら無い場合はエラーにする', () => {
+  const malformedSheet = fakeSheet('2611', ['日付', 'メモ']); // 想定外の構成
+  const spreadsheet = fakeSpreadsheet([malformedSheet]);
+
+  assert.throws(() => ctx.findCsvTargetSheet(spreadsheet, CSV_CONFIG, '2611'), /必要な列/);
 });
 
 test('readSheetRows はヘッダー行をキーにしたオブジェクト配列を返し、完全に空の行は除外する', () => {
