@@ -97,6 +97,7 @@ function parseSbpsStatementCsv(text) {
   var transactions = [];
 
   var type5Header = null;
+  var type5Index = null;
 
   rows.forEach(function (row) {
     var recordType = row[0];
@@ -123,21 +124,20 @@ function parseSbpsStatementCsv(text) {
     if (recordType === '5') {
       if (row[1] === '収納明細ID') {
         type5Header = row;
+        type5Index = {};
+        type5Header.forEach(function (name, i) {
+          type5Index[name] = i;
+        });
         return;
       }
-      if (!type5Header) return;
-
-      var idx = {};
-      type5Header.forEach(function (name, i) {
-        idx[name] = i;
-      });
+      if (!type5Index) return;
 
       transactions.push({
-        customerId: row[idx['顧客ID']],
-        amount: parseCurrencyToNumber(row[idx['決済金額']]),
-        saleDate: row[idx['売上日']],
-        kind: classifyTransactionKind(row[idx['売上返金区分名称']]),
-        settlementCategory: row[idx['決済手段名称']],
+        customerId: row[type5Index['顧客ID']],
+        amount: parseCurrencyToNumber(row[type5Index['決済金額']]),
+        saleDate: row[type5Index['売上日']],
+        kind: classifyTransactionKind(row[type5Index['売上返金区分名称']]),
+        settlementCategory: row[type5Index['決済手段名称']],
       });
     }
   });

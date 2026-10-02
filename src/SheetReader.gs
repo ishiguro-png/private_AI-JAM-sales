@@ -25,22 +25,27 @@ function readSheetRows(sheet) {
 }
 
 /**
+ * シートの1行目(ヘッダー行)が、指定した列名をすべて含むかを調べる。
+ * GAS専用のI/O関数。
+ */
+function sheetHasHeaders(sheet, requiredHeaders) {
+  var lastColumn = sheet.getLastColumn();
+  if (lastColumn === 0) return false;
+  var headerRow = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  return requiredHeaders.every(function (h) {
+    return headerRow.indexOf(h) !== -1;
+  });
+}
+
+/**
  * 指定した列名をすべて持つシートを探索する。
  * 複数見つかった場合はエラーにする(どのタブを使うべきか一意に決められないため)。
  * GAS専用のI/O関数。
  */
 function findSheetByHeaders(spreadsheet, requiredHeaders) {
-  var matches = [];
-  var sheets = spreadsheet.getSheets();
-  for (var i = 0; i < sheets.length; i++) {
-    var lastColumn = sheets[i].getLastColumn();
-    if (lastColumn === 0) continue;
-    var headerRow = sheets[i].getRange(1, 1, 1, lastColumn).getValues()[0];
-    var hasAll = requiredHeaders.every(function (h) {
-      return headerRow.indexOf(h) !== -1;
-    });
-    if (hasAll) matches.push(sheets[i]);
-  }
+  var matches = spreadsheet.getSheets().filter(function (sheet) {
+    return sheetHasHeaders(sheet, requiredHeaders);
+  });
 
   if (matches.length === 0) {
     throw new Error('列 [' + requiredHeaders.join(', ') + '] を持つシートが見つかりませんでした。');
@@ -58,14 +63,33 @@ function findSheetByHeaders(spreadsheet, requiredHeaders) {
 }
 
 /**
+ * CONFIG.TARGET_SHEET_NAME で指定されたシートが、指定した列名をすべて持つか検証して返す。
+ * 名前で見つかっても必要な列がなければ、設定ミスとしてエラーにする
+ * (そのまま読み進めると「対象0件=問題なし」という誤った"OK"になってしまうため)。
+ * GAS専用のI/O関数。
+ */
+function resolveNamedSheet(spreadsheet, sheetName, requiredHeaders) {
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) return null;
+  if (!sheetHasHeaders(sheet, requiredHeaders)) {
+    throw new Error(
+      'CONFIG.TARGET_SHEET_NAME「' + sheetName + '」は見つかりましたが、必要な列 [' +
+      requiredHeaders.join(', ') + '] がありません。設定を確認してください。'
+    );
+  }
+  return sheet;
+}
+
+/**
  * CONFIG.TARGET_SHEET_NAME で見つからない場合に、
  * 「対象月」「ステータス」「合計」列を持つシートを自動探索する(月次サマリー照合用)。
  * GAS専用のI/O関数。
  */
 function findTargetSheet(spreadsheet, config) {
-  var byName = spreadsheet.getSheetByName(config.TARGET_SHEET_NAME);
+  var requiredHeaders = ['対象月', 'ステータス', '合計'];
+  var byName = resolveNamedSheet(spreadsheet, config.TARGET_SHEET_NAME, requiredHeaders);
   if (byName) return byName;
-  return findSheetByHeaders(spreadsheet, ['対象月', 'ステータス', '合計']);
+  return findSheetByHeaders(spreadsheet, requiredHeaders);
 }
 
 /**
@@ -74,9 +98,10 @@ function findTargetSheet(spreadsheet, config) {
  * GAS専用のI/O関数。
  */
 function findCsvTargetSheet(spreadsheet, config) {
-  var byName = spreadsheet.getSheetByName(config.TARGET_SHEET_NAME);
+  var requiredHeaders = ['顧客ID', config.CSV_EXPORTED_COLUMN, 'ステータス', '合計'];
+  var byName = resolveNamedSheet(spreadsheet, config.TARGET_SHEET_NAME, requiredHeaders);
   if (byName) return byName;
-  return findSheetByHeaders(spreadsheet, ['顧客ID', config.CSV_EXPORTED_COLUMN, 'ステータス', '合計']);
+  return findSheetByHeaders(spreadsheet, requiredHeaders);
 }
 
 /**

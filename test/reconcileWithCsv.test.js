@@ -84,3 +84,45 @@ test('formatCsvReconcileReport は要確認件数がある場合にその旨を�
   assert.match(report, /要確認の項目があります/);
   assert.match(report, /C6A99999999999/);
 });
+
+test('reconcileWithCsv は alreadyMatchedRows に渡した行を突合対象から除外する(同一実行内の複数CSVでの二重消込み防止)', () => {
+  const sheetRows = [
+    { '契約ID': 'only-row', '顧客ID': 'C1', '合計': '¥1,000', 'ステータス': '決済完了', 'CSV出力済み': '未' },
+  ];
+  const transactions = [{ customerId: 'C1', amount: 1000, kind: 'sale', saleDate: '2026/08/01' }];
+
+  // 1ファイル目: 消し込み成功
+  const firstRunResult = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
+  assert.equal(firstRunResult.matched.length, 1);
+
+  const alreadyMatchedRows = new Set(firstRunResult.matched.map((m) => m.row));
+
+  // 2ファイル目(同じ実行内): 既に一致済みの行なので、別のCSVに同額取引があっても二重計上しない
+  const secondRunResult = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG, alreadyMatchedRows);
+  assert.equal(secondRunResult.pendingRowCount, 0);
+  assert.equal(secondRunResult.matched.length, 0);
+  // プールされたCSV取引はシート側の対象が無いので unmatchedTransactions に残る
+  assert.equal(secondRunResult.unmatchedTransactions.length, 1);
+});
+
+test('reconcileWithCsv は顧客IDが空の消し込み待ち行を rowsMissingCustomerId に分離し、黙って消さない', () => {
+  const sheetRows = [
+    { '契約ID': 'no-customer-id', '顧客ID': '', '合計': '¥1,000', 'ステータス': '決済完了', 'CSV出力済み': '未' },
+  ];
+  const result = ctx.reconcileWithCsv(sheetRows, [], CONFIG);
+
+  assert.equal(result.pendingRowCount, 0);
+  assert.equal(result.rowsMissingCustomerId.length, 1);
+  assert.equal(result.rowsMissingCustomerId[0]['契約ID'], 'no-customer-id');
+});
+
+test('reconcileWithCsv は金額が0円でない顧客ID空のCSV取引を unidentifiedTransactions として警告する', () => {
+  const transactions = [
+    { customerId: '', amount: 3000, kind: 'sale', saleDate: '2026/08/01' }, // 要警告: 実際にお金が動いている
+    { customerId: '', amount: 0, kind: 'sale', saleDate: '2026/08/01' }, // EMV 3-Dセキュア認証費用などは警告対象外
+  ];
+  const result = ctx.reconcileWithCsv([], transactions, CONFIG);
+
+  assert.equal(result.unidentifiedTransactions.length, 1);
+  assert.equal(result.unidentifiedTransactions[0].amount, 3000);
+});

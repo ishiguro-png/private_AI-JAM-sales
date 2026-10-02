@@ -9,19 +9,50 @@
  *    (同じ顧客・同じ金額の行が複数ある場合でも、件数ベースで正しく対応づく)
  *
  * 返金(kind === 'refund')レコードは今回は突合に使わず、参考情報としてのみ返す。
- * 副作用のない純粋関数。
+ *
+ * データに不備がある行(顧客IDが空)は、金額を見失わないよう
+ * 突合対象から静かに弾くのではなく、別バケツ(rowsMissingCustomerId /
+ * unidentifiedTransactions)として必ず結果に残す。
+ *
+ * alreadyMatchedRows (省略可、Setまたは配列) に渡した行は、シート側の
+ * 突合対象から除外する。1回の実行で複数のCSVファイルを処理する際に、
+ * 同じ「消し込み待ち」行が複数のファイルに対して二重に「入金確認OK」と
+ * 判定されるのを防ぐために使う(呼び出し側で、1ファイル処理するごとに
+ * matched行をこのSetへ積み増していく)。
+ *
+ * 副作用のない純粋関数(渡されたSetを書き換えることはない)。
  */
-function reconcileWithCsv(sheetRows, transactions, config) {
-  var pendingRows = sheetRows.filter(function (row) {
+function reconcileWithCsv(sheetRows, transactions, config, alreadyMatchedRows) {
+  var excluded = alreadyMatchedRows || [];
+  var isExcluded = function (row) {
+    if (excluded.has) return excluded.has(row); // Set
+    return excluded.indexOf(row) !== -1; // Array
+  };
+
+  var pendingCandidates = sheetRows.filter(function (row) {
     return (
       row['ステータス'] === config.COMPLETED_STATUS &&
       row[config.CSV_EXPORTED_COLUMN] === config.CSV_EXPORTED_PENDING_VALUE &&
-      row['顧客ID']
+      !isExcluded(row)
     );
+  });
+
+  var pendingRows = pendingCandidates.filter(function (row) {
+    return !!row['顧客ID'];
+  });
+  var rowsMissingCustomerId = pendingCandidates.filter(function (row) {
+    return !row['顧客ID'];
   });
 
   var saleTransactions = transactions.filter(function (t) {
     return t.kind === 'sale' && t.customerId;
+  });
+  // 顧客IDが空の売上レコードのうち、金額が0円のものは「EMV 3-Dセキュア」認証費用のような
+  // 技術的なレコード(SBPS側の仕様で顧客IDが元々付与されない)であり、実害のある
+  // 取りこぼしではないため警告対象から除く。金額が0円でないのに顧客IDが空のものは、
+  // 実際のお金の行方が追えなくなっている可能性があるため警告する。
+  var unidentifiedTransactions = transactions.filter(function (t) {
+    return t.kind === 'sale' && !t.customerId && t.amount !== 0;
   });
   var refundTransactions = transactions.filter(function (t) {
     return t.kind === 'refund';
@@ -61,6 +92,8 @@ function reconcileWithCsv(sheetRows, transactions, config) {
     matched: matched,
     unmatchedRows: unmatchedRows,
     unmatchedTransactions: unmatchedTransactions,
+    rowsMissingCustomerId: rowsMissingCustomerId,
+    unidentifiedTransactions: unidentifiedTransactions,
     refundTransactions: refundTransactions,
   };
 }
@@ -102,6 +135,30 @@ function formatCsvReconcileReport(result, csvSummary) {
     lines.push('');
   }
 
+  if (result.rowsMissingCustomerId.length > 0) {
+    lines.push(
+      '--- ⚠ 顧客IDが空のため突合できなかったシート行 (' + result.rowsMissingCustomerId.length + '件) ---'
+    );
+    result.rowsMissingCustomerId.forEach(function (row) {
+      lines.push(
+        '  契約ID:' + row['契約ID'] + ' / 顧客名:' + row['顧客名'] + ' / 対象月:' + row['対象月'] +
+        ' / 合計:' + formatYen(parseCurrencyToNumber(row['合計']))
+      );
+    });
+    lines.push('');
+  }
+
+  if (result.unidentifiedTransactions.length > 0) {
+    var unidentifiedTotal = result.unidentifiedTransactions.reduce(function (sum, t) {
+      return sum + t.amount;
+    }, 0);
+    lines.push(
+      '--- ⚠ 顧客IDが空のため突合できなかったCSV取引 (' + result.unidentifiedTransactions.length +
+      '件 / 合計 ' + formatYen(unidentifiedTotal) + ') ---'
+    );
+    lines.push('');
+  }
+
   if (result.refundTransactions.length > 0) {
     var refundTotal = result.refundTransactions.reduce(function (sum, t) {
       return sum + t.amount;
@@ -113,7 +170,11 @@ function formatCsvReconcileReport(result, csvSummary) {
     lines.push('');
   }
 
-  var isClean = result.unmatchedRows.length === 0 && result.unmatchedTransactions.length === 0;
+  var isClean =
+    result.unmatchedRows.length === 0 &&
+    result.unmatchedTransactions.length === 0 &&
+    result.rowsMissingCustomerId.length === 0 &&
+    result.unidentifiedTransactions.length === 0;
   lines.push(isClean ? '差異なし' : '要確認の項目があります。上記をご確認ください。');
   return lines.join('\n');
 }
