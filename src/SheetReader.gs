@@ -25,15 +25,12 @@ function readSheetRows(sheet) {
 }
 
 /**
- * CONFIG.TARGET_SHEET_NAME で見つからない場合に、
- * 「対象月」「ステータス」「合計」列を持つシートを自動探索する。
+ * 指定した列名をすべて持つシートを探索する。
+ * 複数見つかった場合はエラーにする(どのタブを使うべきか一意に決められないため)。
  * GAS専用のI/O関数。
  */
-function findTargetSheet(spreadsheet, config) {
-  var byName = spreadsheet.getSheetByName(config.TARGET_SHEET_NAME);
-  if (byName) return byName;
-
-  var requiredHeaders = ['対象月', 'ステータス', '合計'];
+function findSheetByHeaders(spreadsheet, requiredHeaders) {
+  var matches = [];
   var sheets = spreadsheet.getSheets();
   for (var i = 0; i < sheets.length; i++) {
     var lastColumn = sheets[i].getLastColumn();
@@ -42,9 +39,44 @@ function findTargetSheet(spreadsheet, config) {
     var hasAll = requiredHeaders.every(function (h) {
       return headerRow.indexOf(h) !== -1;
     });
-    if (hasAll) return sheets[i];
+    if (hasAll) matches.push(sheets[i]);
   }
-  throw new Error('突合対象シートが見つかりませんでした。CONFIG.TARGET_SHEET_NAMEを確認してください。');
+
+  if (matches.length === 0) {
+    throw new Error('列 [' + requiredHeaders.join(', ') + '] を持つシートが見つかりませんでした。');
+  }
+  if (matches.length > 1) {
+    var names = matches.map(function (s) {
+      return s.getName();
+    });
+    throw new Error(
+      '列 [' + requiredHeaders.join(', ') + '] を持つシートが複数見つかりました(' + names.join(', ') + ')。' +
+      'どちらを使うか一意に決められません。'
+    );
+  }
+  return matches[0];
+}
+
+/**
+ * CONFIG.TARGET_SHEET_NAME で見つからない場合に、
+ * 「対象月」「ステータス」「合計」列を持つシートを自動探索する(月次サマリー照合用)。
+ * GAS専用のI/O関数。
+ */
+function findTargetSheet(spreadsheet, config) {
+  var byName = spreadsheet.getSheetByName(config.TARGET_SHEET_NAME);
+  if (byName) return byName;
+  return findSheetByHeaders(spreadsheet, ['対象月', 'ステータス', '合計']);
+}
+
+/**
+ * 「顧客ID」「CSV出力済み」「ステータス」「合計」列を持つシートを自動探索する
+ * (CSV突合用)。契約単位の台帳シート(例: 契約一覧タブ)が想定対象。
+ * GAS専用のI/O関数。
+ */
+function findCsvTargetSheet(spreadsheet, config) {
+  var byName = spreadsheet.getSheetByName(config.TARGET_SHEET_NAME);
+  if (byName) return byName;
+  return findSheetByHeaders(spreadsheet, ['顧客ID', config.CSV_EXPORTED_COLUMN, 'ステータス', '合計']);
 }
 
 /**

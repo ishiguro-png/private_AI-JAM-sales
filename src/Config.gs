@@ -13,4 +13,13 @@ var CONFIG = {
 
   // 突合対象シート上で「決済完了」とみなすステータス文字列
   COMPLETED_STATUS: '決済完了',
+
+  // 収納明細書(CSV)を格納しているGoogle DriveフォルダのID
+  // (PDF_FOLDER_IDと同じフォルダでも構わない)
+  CSV_FOLDER_ID: 'PUT_YOUR_DRIVE_FOLDER_ID_HERE',
+
+  // CSV突合の消し込み状況を表す列名と、各状態を表す文字列
+  CSV_EXPORTED_COLUMN: 'CSV出力済み',
+  CSV_EXPORTED_PENDING_VALUE: '未',
+  CSV_EXPORTED_DONE_VALUE: '済',
 };
