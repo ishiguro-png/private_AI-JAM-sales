@@ -194,3 +194,27 @@ test('reconcileWithCsv は金額が0円でない顧客ID空のCSV取引を unide
   assert.equal(result.unidentifiedTransactions.length, 1);
   assert.equal(result.unidentifiedTransactions[0].amount, 3000);
 });
+
+test('reconcileWithCsv はCONFIG.EXCLUDED_CUSTOMER_IDSの顧客(自社テストアカウント等)を「要確認」扱いから外し、excludedTransactionsに分離する', () => {
+  const { transactions, sheetRows } = loadFixtures();
+  const configWithExclusion = Object.assign({}, CONFIG, { EXCLUDED_CUSTOMER_IDS: ['C6A55B54B023A1'] });
+
+  const resultWithout = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
+  const resultWith = ctx.reconcileWithCsv(sheetRows, transactions, configWithExclusion);
+
+  // 除外設定なし: C6A55B54B023A1の分が unmatchedTransactions / offsetByRefund に混ざっている
+  assert.ok(resultWithout.unmatchedTransactions.some((t) => t.customerId === 'C6A55B54B023A1'));
+  assert.ok(resultWithout.offsetByRefund.some((t) => t.customerId === 'C6A55B54B023A1'));
+
+  // 除外設定あり: C6A55B54B023A1の分はどの「要確認」バケツにも残らない
+  assert.ok(!resultWith.unmatchedTransactions.some((t) => t.customerId === 'C6A55B54B023A1'));
+  assert.ok(!resultWith.offsetByRefund.some((t) => t.customerId === 'C6A55B54B023A1'));
+  assert.ok(!resultWith.refundTransactions.some((t) => t.customerId === 'C6A55B54B023A1'));
+
+  // 代わりにexcludedTransactionsに売上16件(返金相殺された10件+未消込みの6件)すべてが入る
+  const excludedSales = resultWith.excludedTransactions.filter((t) => t.kind === 'sale');
+  assert.equal(excludedSales.length, 16);
+
+  // 2608タブの3件の一致結果など、他の判定には影響しない
+  assert.equal(resultWith.matched.length, resultWithout.matched.length);
+});

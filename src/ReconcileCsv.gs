@@ -50,20 +50,25 @@ function verifyTransferAmount(summary) {
  * 判定されるのを防ぐために使う(呼び出し側で、1ファイル処理するごとに
  * matched行をこのSetへ積み増していく)。
  *
+ * config.EXCLUDED_CUSTOMER_IDS に含まれる顧客ID(自社のテストアカウント等、
+ * 売上管理シートに意図的に載せていない顧客)の取引は、売上管理シートに
+ * 対応する行が存在しないのが正常なので、「要確認」扱いにはせず
+ * excludedTransactions として参考表示だけする。
+ *
  * 副作用のない純粋関数(渡されたSetを書き換えることはない)。
  */
 function reconcileWithCsv(sheetRows, transactions, config, alreadyMatchedRows) {
-  var excluded = alreadyMatchedRows || [];
-  var isExcluded = function (row) {
-    if (excluded.has) return excluded.has(row); // Set
-    return excluded.indexOf(row) !== -1; // Array
+  var excludedRows = alreadyMatchedRows || [];
+  var isAlreadyMatchedRow = function (row) {
+    if (excludedRows.has) return excludedRows.has(row); // Set
+    return excludedRows.indexOf(row) !== -1; // Array
   };
 
   var pendingCandidates = sheetRows.filter(function (row) {
     return (
       row['ステータス'] === config.COMPLETED_STATUS &&
       row[config.CSV_EXPORTED_COLUMN] === config.CSV_EXPORTED_PENDING_VALUE &&
-      !isExcluded(row)
+      !isAlreadyMatchedRow(row)
     );
   });
 
@@ -74,17 +79,29 @@ function reconcileWithCsv(sheetRows, transactions, config, alreadyMatchedRows) {
     return !row['顧客ID'];
   });
 
-  var saleTransactions = transactions.filter(function (t) {
+  var excludedCustomerIds = config.EXCLUDED_CUSTOMER_IDS || [];
+  var isExcludedCustomer = function (customerId) {
+    return excludedCustomerIds.indexOf(customerId) !== -1;
+  };
+
+  var excludedTransactions = transactions.filter(function (t) {
+    return isExcludedCustomer(t.customerId);
+  });
+  var consideredTransactions = transactions.filter(function (t) {
+    return !isExcludedCustomer(t.customerId);
+  });
+
+  var saleTransactions = consideredTransactions.filter(function (t) {
     return t.kind === 'sale' && t.customerId;
   });
   // 顧客IDが空の売上レコードのうち、金額が0円のものは「EMV 3-Dセキュア」認証費用のような
   // 技術的なレコード(SBPS側の仕様で顧客IDが元々付与されない)であり、実害のある
   // 取りこぼしではないため警告対象から除く。金額が0円でないのに顧客IDが空のものは、
   // 実際のお金の行方が追えなくなっている可能性があるため警告する。
-  var unidentifiedTransactions = transactions.filter(function (t) {
+  var unidentifiedTransactions = consideredTransactions.filter(function (t) {
     return t.kind === 'sale' && !t.customerId && t.amount !== 0;
   });
-  var refundTransactions = transactions.filter(function (t) {
+  var refundTransactions = consideredTransactions.filter(function (t) {
     return t.kind === 'refund';
   });
 
@@ -144,6 +161,7 @@ function reconcileWithCsv(sheetRows, transactions, config, alreadyMatchedRows) {
     rowsMissingCustomerId: rowsMissingCustomerId,
     unidentifiedTransactions: unidentifiedTransactions,
     refundTransactions: refundTransactions,
+    excludedTransactions: excludedTransactions,
   };
 }
 
@@ -245,6 +263,17 @@ function formatCsvReconcileReport(result, csvSummary) {
     lines.push(
       '(参考) 返金取引: ' + result.refundTransactions.length + '件 / 合計 ' + formatYen(refundTotal) +
       ' ※今回は突合対象外'
+    );
+    lines.push('');
+  }
+
+  if (result.excludedTransactions.length > 0) {
+    var excludedTotal = result.excludedTransactions.reduce(function (sum, t) {
+      return sum + t.amount;
+    }, 0);
+    lines.push(
+      '(参考) 自社アカウント等の除外対象取引: ' + result.excludedTransactions.length + '件 / 合計 ' +
+      formatYen(excludedTotal) + ' (CONFIG.EXCLUDED_CUSTOMER_IDSで指定。要確認扱いにはしない)'
     );
     lines.push('');
   }

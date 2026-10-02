@@ -24,4 +24,10 @@ var CONFIG = {
   CSV_EXPORTED_COLUMN: 'CSV出力済み',
   CSV_EXPORTED_PENDING_VALUE: '未',
   CSV_EXPORTED_DONE_VALUE: '済',
+
+  // 自社のテスト用アカウントなど、売上管理シートに意図的に載せていない顧客IDの一覧。
+  // ここに含まれる顧客IDのCSV取引は、突合結果の「要確認」扱いにはせず、
+  // 参考情報(excludedTransactions)として別枠で表示する。
+  // 例: 'C6A55B54B023A1' は自社テストアカウントであることを確認済み(2026年08月分で確認)。
+  EXCLUDED_CUSTOMER_IDS: ['C6A55B54B023A1'],
 };
