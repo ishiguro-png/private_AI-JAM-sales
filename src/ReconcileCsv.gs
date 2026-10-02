@@ -34,7 +34,11 @@ function verifyTransferAmount(summary) {
  *  - 同じ(顧客ID, 金額)の組が両方にあれば「入金確認OK」とみなし、1件ずつ消費する
  *    (同じ顧客・同じ金額の行が複数ある場合でも、件数ベースで正しく対応づく)
  *
- * 返金(kind === 'refund')レコードは今回は突合に使わず、参考情報としてのみ返す。
+ * 返金(kind === 'refund')レコード自体は突合(入金確認OKの判定)には使わないが、
+ * 同じ顧客・同じ金額の売上を相殺する目的では使う: 決済エラー等で一度売上計上され、
+ * 同額がすぐ返金された(純額ゼロの)取引は、実際には入金されていないので
+ * 「入金確認OK」と誤判定しないよう、売上プールから先に差し引く。
+ * 差し引いた分は offsetByRefund として結果に残す(黙って消さない)。
  *
  * データに不備がある行(顧客IDが空)は、金額を見失わないよう
  * 突合対象から静かに弾くのではなく、別バケツ(rowsMissingCustomerId /
@@ -92,6 +96,24 @@ function reconcileWithCsv(sheetRows, transactions, config, alreadyMatchedRows) {
     pool[key].push(t);
   });
 
+  // 同じ顧客・同じ金額で返金が入っている分は、プールから差し引く。
+  // 決済エラー等で一度売上計上され、すぐ同額返金されたケース(純額ゼロ)を
+  // 「入金確認OK」と誤判定しないようにするため。差し引いた分は
+  // offsetByRefund として結果に残す(黙って消さない)。
+  var offsetByRefund = [];
+  var refundCounts = {};
+  refundTransactions.forEach(function (t) {
+    if (!t.customerId) return;
+    var key = t.customerId + '|' + Math.abs(t.amount);
+    refundCounts[key] = (refundCounts[key] || 0) + 1;
+  });
+  Object.keys(refundCounts).forEach(function (key) {
+    var bucket = pool[key];
+    if (!bucket || bucket.length === 0) return;
+    var offsetCount = Math.min(bucket.length, refundCounts[key]);
+    offsetByRefund = offsetByRefund.concat(bucket.splice(0, offsetCount));
+  });
+
   var matched = [];
   var unmatchedRows = [];
 
@@ -118,6 +140,7 @@ function reconcileWithCsv(sheetRows, transactions, config, alreadyMatchedRows) {
     matched: matched,
     unmatchedRows: unmatchedRows,
     unmatchedTransactions: unmatchedTransactions,
+    offsetByRefund: offsetByRefund,
     rowsMissingCustomerId: rowsMissingCustomerId,
     unidentifiedTransactions: unidentifiedTransactions,
     refundTransactions: refundTransactions,
@@ -171,6 +194,21 @@ function formatCsvReconcileReport(result, csvSummary) {
   if (result.unmatchedTransactions.length > 0) {
     lines.push('--- CSVにはあるが、シートに対応する消し込み待ち行が見つからなかった取引 (' + result.unmatchedTransactions.length + '件) ---');
     result.unmatchedTransactions.forEach(function (t) {
+      lines.push('  顧客ID:' + t.customerId + ' / 金額:' + formatYen(t.amount) + ' / 売上日:' + t.saleDate);
+    });
+    lines.push('');
+  }
+
+  if (result.offsetByRefund.length > 0) {
+    var offsetTotal = result.offsetByRefund.reduce(function (sum, t) {
+      return sum + t.amount;
+    }, 0);
+    lines.push(
+      '--- 同額の返金で相殺され、入金なし(純額ゼロ)として扱った売上 (' + result.offsetByRefund.length +
+      '件 / 合計 ' + formatYen(offsetTotal) + ') ---'
+    );
+    lines.push('決済エラー等で売上計上後すぐ返金された可能性があります。シート側で消し込み待ちのままなら要確認です。');
+    result.offsetByRefund.forEach(function (t) {
       lines.push('  顧客ID:' + t.customerId + ' / 金額:' + formatYen(t.amount) + ' / 売上日:' + t.saleDate);
     });
     lines.push('');

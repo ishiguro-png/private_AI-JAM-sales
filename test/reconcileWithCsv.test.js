@@ -69,25 +69,41 @@ test('formatCsvReconcileReport はお振込金額の整合性チェックを冒�
   assert.match(report, /要確認の項目があります/);
 });
 
-test('reconcileWithCsv は 顧客ID+金額 が一致する「CSV出力済み=未」の行を消し込む', () => {
+test('reconcileWithCsv は 顧客ID+金額 が一致する「CSV出力済み=未」の行を消し込む(ただし返金で相殺された売上は除く)', () => {
   const { transactions, sheetRows } = loadFixtures();
   const result = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
 
   // 決済完了×CSV出力済み=未 の行は5件(済の行・解約の行は対象外)
   assert.equal(result.pendingRowCount, 5);
-  // うち4件(ファイルフォックス・N-support・kibidango x2)がCSVの売上と一致する
-  assert.equal(result.matched.length, 4);
+  // kibidango(C6A55F015547D5)の売上8件は、実データでは全8件が同額返金され純額ゼロのため、
+  // 「入金確認OK」にはならない。一致するのはファイルフォックス・N-supportの2件のみ
+  assert.equal(result.matched.length, 2);
 
   const matchedCustomerIds = result.matched.map((m) => m.row['顧客ID']).sort();
-  assert.deepEqual(matchedCustomerIds, ['C6A50A28C2A633', 'C6A52E8C24E3B5', 'C6A55F015547D5', 'C6A55F015547D5']);
+  assert.deepEqual(matchedCustomerIds, ['C6A50A28C2A633', 'C6A52E8C24E3B5']);
 });
 
-test('reconcileWithCsv はCSVに対応する入金が見つからない行を unmatchedRows に入れる', () => {
+test('reconcileWithCsv はCSVに対応する入金が見つからない行を unmatchedRows に入れる(返金で相殺された分を含む)', () => {
   const { transactions, sheetRows } = loadFixtures();
   const result = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
 
-  assert.equal(result.unmatchedRows.length, 1);
-  assert.equal(result.unmatchedRows[0]['顧客ID'], 'C6A99999999999');
+  // シートにしかいない架空顧客(1件) + 返金で相殺されたkibidangoの2行
+  assert.equal(result.unmatchedRows.length, 3);
+  const unmatchedCustomerIds = result.unmatchedRows.map((r) => r['顧客ID']).sort();
+  assert.deepEqual(unmatchedCustomerIds, ['C6A55F015547D5', 'C6A55F015547D5', 'C6A99999999999']);
+});
+
+test('reconcileWithCsv は決済エラー等で同額返金された売上を offsetByRefund に分離し、黙って「一致」にしない', () => {
+  const { transactions, sheetRows } = loadFixtures();
+  const result = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
+
+  // kibidango(8件、¥7,678)・西新宿ドットネット(1件、¥7,678)は全額返金で純額ゼロ、
+  // シートに登場しない顧客(10件、¥2,178)も同額返金されている分だけ相殺される
+  assert.equal(result.offsetByRefund.length, 19);
+  const offsetCustomerIds = result.offsetByRefund.map((t) => t.customerId);
+  assert.equal(offsetCustomerIds.filter((id) => id === 'C6A55F015547D5').length, 8);
+  assert.equal(offsetCustomerIds.filter((id) => id === 'C6A57145E7886A').length, 1);
+  assert.equal(offsetCustomerIds.filter((id) => id === 'C6A55B54B023A1').length, 10);
 });
 
 test('reconcileWithCsv は「CSV出力済み=済」や「決済完了以外」の行を突合対象から除外する', () => {
@@ -106,13 +122,15 @@ test('reconcileWithCsv は対応するシート行が見つからないCSV取引
   const { transactions, sheetRows } = loadFixtures();
   const result = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
 
-  // 解約行(C6A57145E7886A)の分は消費されず残る
+  // 解約行(C6A57145E7886A)の売上1件は、実データでは同額返金され純額ゼロなので
+  // offsetByRefundに回り、unmatchedTransactionsには残らない
   const leftoverForCancelled = result.unmatchedTransactions.filter((t) => t.customerId === 'C6A57145E7886A');
-  assert.equal(leftoverForCancelled.length, 1);
+  assert.equal(leftoverForCancelled.length, 0);
 
-  // シートに一切登場しない顧客(C6A55B54B023A1)の取引は16件すべて残る
+  // シートに一切登場しない顧客(C6A55B54B023A1)は、売上16件のうち10件(¥2,178分)が
+  // 返金で相殺され、残り6件(¥7,678分)がunmatchedTransactionsに残る
   const leftoverForUnknown = result.unmatchedTransactions.filter((t) => t.customerId === 'C6A55B54B023A1');
-  assert.equal(leftoverForUnknown.length, 16);
+  assert.equal(leftoverForUnknown.length, 6);
 });
 
 test('reconcileWithCsv は返金レコードを突合に使わず、参考情報としてのみ返す', () => {
