@@ -1,4 +1,30 @@
 /**
+ * 最終的に合っているべきなのは「お振込金額」そのもの。CSVの明細サマリー(type2)には、
+ * その内訳(取扱金額・手数料・消費税額)も一緒に入っているので、
+ *
+ *   取扱金額 − 手数料(税抜) − 消費税額 = お振込金額
+ *
+ * という関係が実際に成立しているかを検証する。ここが崩れていたら、
+ * 個々の顧客ID単位の消し込みがいくら一致していても、最終的な入金額の
+ * 根拠を説明できていないことになる。
+ * 副作用のない純粋関数。
+ */
+function verifyTransferAmount(summary) {
+  var expectedTransferAmount = summary.grossAmount - summary.feeAmount - summary.taxAmount;
+  var diff = summary.transferAmount - expectedTransferAmount;
+
+  return {
+    grossAmount: summary.grossAmount,
+    feeAmount: summary.feeAmount,
+    taxAmount: summary.taxAmount,
+    expectedTransferAmount: expectedTransferAmount,
+    actualTransferAmount: summary.transferAmount,
+    diff: diff,
+    isMatch: diff === 0,
+  };
+}
+
+/**
  * シートの「消し込み待ち」契約行(ステータス=決済完了 かつ CSV出力済み=未)を、
  * CSVの取引明細(売上レコード)と「顧客ID + 金額」で突き合わせる。
  *
@@ -103,11 +129,26 @@ function reconcileWithCsv(sheetRows, transactions, config, alreadyMatchedRows) {
  * 副作用のない純粋関数。
  */
 function formatCsvReconcileReport(result, csvSummary) {
+  var transferCheck = verifyTransferAmount(csvSummary);
+
   var lines = [];
   lines.push('=== 収納明細CSV 自動照合結果 ===');
   lines.push('会社名: ' + csvSummary.companyName + ' / サービス名: ' + csvSummary.serviceName);
   lines.push('集計期間: ' + csvSummary.periodFrom + ' ～ ' + csvSummary.periodTo);
-  lines.push('お振込金額: ' + formatYen(csvSummary.transferAmount));
+  lines.push('');
+  lines.push('--- お振込金額の整合性チェック(最終目標) ---');
+  lines.push(
+    '取扱金額 ' + formatYen(transferCheck.grossAmount) +
+    ' − 手数料 ' + formatYen(transferCheck.feeAmount) +
+    ' − 消費税額 ' + formatYen(transferCheck.taxAmount) +
+    ' = ' + formatYen(transferCheck.expectedTransferAmount) + '(計算値)'
+  );
+  lines.push('実際のお振込金額: ' + formatYen(transferCheck.actualTransferAmount));
+  lines.push(
+    transferCheck.isMatch
+      ? '→ 一致'
+      : '→ ⚠ 不一致(差額 ' + formatYen(transferCheck.diff) + ')。CSVの読み取り内容を確認してください。'
+  );
   lines.push('');
   lines.push('消し込み待ち契約行(CSV出力済み=未・決済完了): ' + result.pendingRowCount + '件');
   lines.push('入金確認OK: ' + result.matched.length + '件');
@@ -171,6 +212,7 @@ function formatCsvReconcileReport(result, csvSummary) {
   }
 
   var isClean =
+    transferCheck.isMatch &&
     result.unmatchedRows.length === 0 &&
     result.unmatchedTransactions.length === 0 &&
     result.rowsMissingCustomerId.length === 0 &&

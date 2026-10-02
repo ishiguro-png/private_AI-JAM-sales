@@ -22,6 +22,53 @@ function loadFixtures() {
   return { summary, transactions, sheetRows };
 }
 
+test('verifyTransferAmount は実際の収納明細CSVで「取扱金額-手数料-消費税額=お振込金額」が成立することを確認する', () => {
+  const { summary } = loadFixtures();
+  const check = ctx.verifyTransferAmount(summary);
+
+  assert.equal(check.grossAmount, 69102);
+  assert.equal(check.feeAmount, 34657);
+  assert.equal(check.taxAmount, 1208);
+  assert.equal(check.expectedTransferAmount, 33237);
+  assert.equal(check.actualTransferAmount, 33237);
+  assert.equal(check.diff, 0);
+  assert.equal(check.isMatch, true);
+});
+
+test('verifyTransferAmount は内訳とお振込金額が合わない場合に差額付きで不一致を返す', () => {
+  const check = ctx.verifyTransferAmount({
+    grossAmount: 69102,
+    feeAmount: 34657,
+    taxAmount: 1208,
+    transferAmount: 30000, // 本来は33237のはずが食い違っているケース
+  });
+
+  assert.equal(check.expectedTransferAmount, 33237);
+  assert.equal(check.diff, -3237);
+  assert.equal(check.isMatch, false);
+});
+
+test('formatCsvReconcileReport はお振込金額の整合性チェックを冒頭に表示し、不一致なら全体を要確認にする', () => {
+  const { transactions, sheetRows } = loadFixtures();
+  const cleanResult = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
+
+  const mismatchedSummary = {
+    companyName: '株式会社ＣＲＡＦＴＲＡＮＳ',
+    serviceName: 'AI JAM',
+    periodFrom: '2026/08/01',
+    periodTo: '2026/08/31',
+    grossAmount: 69102,
+    feeAmount: 34657,
+    taxAmount: 1208,
+    transferAmount: 30000,
+  };
+
+  const report = ctx.formatCsvReconcileReport(cleanResult, mismatchedSummary);
+  assert.match(report, /お振込金額の整合性チェック/);
+  assert.match(report, /不一致/);
+  assert.match(report, /要確認の項目があります/);
+});
+
 test('reconcileWithCsv は 顧客ID+金額 が一致する「CSV出力済み=未」の行を消し込む', () => {
   const { transactions, sheetRows } = loadFixtures();
   const result = ctx.reconcileWithCsv(sheetRows, transactions, CONFIG);
