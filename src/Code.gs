@@ -1,5 +1,10 @@
 /**
  * スプレッドシートを開いたときにカスタムメニューを追加する。
+ *
+ * 同じスプレッドシートに紐づく別のApps Script(「明細書作成」)が
+ * 独自の onOpen() を持っていると、GASは同一プロジェクト内の関数名を
+ * 1つしか認識できないため、片方のメニューが消える・上書きされる事故が起きる。
+ * そのため「明細書作成」側の onOpen() は削除したうえで、そのメニューをここに統合する。
  */
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -8,6 +13,12 @@ function onOpen() {
     .addSeparator()
     .addItem('月次の自動実行を設定する', 'createMonthlyCsvTrigger')
     .addItem('月次の自動実行を解除する', 'removeMonthlyCsvTrigger')
+    .addToUi();
+
+  SpreadsheetApp.getUi()
+    .createMenu('🍓明細書作成')
+    .addItem('この月の明細書を作成', 'createMonthlyStatements')
+    .addItem('この月の保存フォルダを開く', 'openMonthlyStatementFolder')
     .addToUi();
 }
 
