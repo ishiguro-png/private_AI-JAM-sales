@@ -33,4 +33,9 @@ var CONFIG = {
   // 参考情報(excludedTransactions)として別枠で表示する。
   // 例: 'C6A55B54B023A1' は自社テストアカウントであることを確認済み(2026年08月分で確認)。
   EXCLUDED_CUSTOMER_IDS: ['C6A55B54B023A1'],
+
+  // 週次の自動実行(runCsvReconciliationScheduled)で「要確認」の項目が
+  // あったときに通知するメールアドレス。空のままだと通知せず実行ログのみに残る
+  // (つまり週次トリガーを設定しても、ここを設定しない限り誰にも通知されない)。
+  NOTIFY_EMAIL: '',
 };
