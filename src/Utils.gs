@@ -18,14 +18,3 @@ function formatYen(amount) {
   var withCommas = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return sign + '¥' + withCommas;
 }
-
-function formatDateYmd(date) {
-  var y = date.getFullYear();
-  var m = String(date.getMonth() + 1).padStart(2, '0');
-  var d = String(date.getDate()).padStart(2, '0');
-  return y + '/' + m + '/' + d;
-}
-
-function monthLabelFromDate(date) {
-  return date.getFullYear() + '年' + String(date.getMonth() + 1).padStart(2, '0') + '月';
-}

@@ -24,7 +24,3 @@ test('formatYen は3桁区切りの円表記を返す', () => {
   assert.equal(ctx.formatYen(-1688), '-¥1,688');
   assert.equal(ctx.formatYen(0), '¥0');
 });
-
-test('monthLabelFromDate は "YYYY年MM月" 形式を返す', () => {
-  assert.equal(ctx.monthLabelFromDate(new Date(2026, 7, 1)), '2026年08月');
-});

@@ -1,20 +1,15 @@
 # private_AI-JAM-sales
 
 代理店売上管理シート(Google スプレッドシート)と、SBペイメントサービスが発行する
-収納明細書(CSV / PDF)を自動で突き合わせる、Google Apps Script (GAS) 製のツールです。
+収納明細書(CSV)を自動で突き合わせる、Google Apps Script (GAS) 製のツールです。
 
-**本番運用の中心はCSV版です。** PDF版は、CSVが使えなかった初期段階向けの
-月次サマリー照合(簡易版)として残しています。両者は独立したメニュー項目から
-それぞれ実行できます。
-
-## CSV版: 顧客ID単位の消し込み(本番用)
-
-### 何をするか
+## 何をするか
 
 1. 指定したGoogle Driveフォルダにある収納明細書(CSV)を読み込む
 2. CSV内の取引明細(1件ずつの売上・返金データ)を、顧客IDと金額ごとに整理する
-3. 売上管理シートの「まだ入金確認できていない契約行」(`ステータス=決済完了` かつ
-   `CSV出力済み=未`)を、`顧客ID + 金額` が一致するCSVの売上取引と1件ずつ突き合わせる
+3. 売上管理シートの「まだ入金確認できていない契約行」(`ステータス=決済完了`。
+   `CSV出力済み`列があるタブでは、さらに`CSV出力済み=未`の行に絞り込む)を、
+   `顧客ID + 金額` が一致するCSVの売上取引と1件ずつ突き合わせる
 4. 結果(一致した件数、入金が見つからなかった行、シートにない取引など)を実行ログ
    (コンソール)に出力する
 
@@ -22,7 +17,7 @@
 今回はまだ有効化していません)。まずは実行ログの内容を確認し、問題なければ次の
 ステップで書き戻しを有効化できます。
 
-### 突合ロジックのイメージ
+## 突合ロジックのイメージ
 
 - **売上管理シート** = 「今月どの顧客からいくら回収する予定か」という**予定表**
 - **収納明細CSV** = 「実際に誰からいくら入金があったか」という**領収書一覧**
@@ -41,7 +36,7 @@
 2. **シートにはあるが、CSVに見当たらない** → まだ入金されていない、または請求漏れの可能性(要確認)
 3. **CSVにはあるが、シートに見当たらない** → シートに登録されていない入金(要確認)
 
-### CSVの集計期間と、シートのタブ構成について
+## CSVの集計期間と、シートのタブ構成について
 
 実際のスプレッドシートは、**月ごとに別タブ**(例: `2608` = 対象月2026年08月分、
 `2609`、`2610`、...)に分かれています。タブ名は「西暦下2桁+対象月2桁」で、
@@ -65,7 +60,7 @@
 「返金による相殺」を参照)。この場合、該当する契約行は入金確認OKにはならず、
 `unmatchedRows` に残って要確認扱いになります。これは異常ではなく、正しい挙動です。
 
-### 自社テストアカウント等の除外(CONFIG.EXCLUDED_CUSTOMER_IDS)
+## 自社テストアカウント等の除外(CONFIG.EXCLUDED_CUSTOMER_IDS)
 
 実データを検証したところ、CSVには**売上管理シートのどのタブにも登録されていない
 顧客ID**が含まれており、確認の結果これは自社のテストアカウントであることが
@@ -75,7 +70,7 @@
 計算されます。除外されるのは「要確認」の判定だけです)。新しいテストアカウントが
 見つかった場合は、このリストに顧客IDを追加してください。
 
-### お振込金額の整合性チェック
+## お振込金額の整合性チェック
 
 最終的に合っているべきなのは、個々の顧客の消し込みの積み上げではなく
 **お振込金額そのもの**です。CSVのサマリー行(レコード種別2)には
@@ -89,7 +84,7 @@
 場合は、個々の顧客ID単位の消し込みがすべて一致していても、レポート全体を
 「要確認」として扱います。
 
-### 「CSV出力済み」列について(任意・標準形式には無い)
+## 「CSV出力済み」列について(任意・標準形式には無い)
 
 `2608` タブのような一部のタブには `CSV出力済み` という列があり、「未」(まだ
 消し込んでいない)という値が入っています。これは、CSVが届くたびに「未」の行だけを
@@ -101,7 +96,7 @@
 行では、`ステータス=決済完了` だけで対象を判定します(タブ自体がCSVの集計期間ごとに
 分かれているため、追加の消し込み済みフラグが無くても二重計上は起きません)。
 
-### 対象外にしているデータ・返金による相殺について
+## 対象外にしているデータ・返金による相殺について
 
 - **与信(オーソリ)・与信取消**: カードの一時的な与信枠確保・解放であり、実際の入金
   (決済金額は常に0円)ではないため、突合処理から完全に除外しています。
@@ -111,7 +106,7 @@
   相殺された売上は `offsetByRefund` としてレポートに表示され(黙って消しません)、
   対応するシート行はそのまま `unmatchedRows`(要確認)に残ります。
 
-### CSVのフォーマットについて
+## CSVのフォーマットについて
 
 SBペイメントサービスの収納明細CSVは、各行の先頭列が「レコード種別」になっている
 複合フォーマットです。本ツールが使っているのは次の2種類です。
@@ -123,40 +118,27 @@ SBペイメントサービスの収納明細CSVは、各行の先頭列が「レ
 
 (`3`=決済手段別集計、`4`=手数料内訳 は現時点では使用していません。)
 
-## PDF版: 月次サマリー照合(簡易版・レガシー)
-
-CSVが使えなかった最初の段階で作成した、月単位の大まかな照合です。PDFから
-「決済処理金額(合計)」を抽出し、シート側の「対象月」×「ステータス=決済完了」の
-合計と比較します。
-
-**既知の制限**: シートの「対象月」(サービス提供対象月)と、実際にカード決済処理
-された月は必ずしも一致しないため、**この方式では初回実行時点で意図的に差異が
-出ます**。CSV版は顧客ID単位で突き合わせるためこの問題を回避できます。新規の
-運用はCSV版を使うことを推奨します。詳細は `test/reconcile.test.js` を参照してください。
-
 ## ファイル構成
 
 ```
-appsscript.json          GASプロジェクトのマニフェスト(Drive API有効化など)
+appsscript.json          GASプロジェクトのマニフェスト
 .clasp.json.example      clasp設定のテンプレート(実際のscriptIdに書き換えて .clasp.json として使う)
-src/Config.gs            設定値(PDF/CSVフォルダID・対象シート名・各種ステータス文字列)
-src/Utils.gs             金額パース・日付フォーマット等の共通関数
+src/Config.gs            設定値(CSVフォルダID・対象シート名・各種ステータス文字列など)
+src/Utils.gs             金額パース・円表記フォーマット等の共通関数
 src/CsvParser.gs         収納明細CSVのパース(RFC4180形式の読み取り・レコード分類)
-src/PdfParser.gs         収納明細PDF→テキスト変換・集計値抽出(レガシー)
-src/SheetReader.gs       シート読み込み・対象シートの自動探索・対象月別サマリー集計
-src/ReconcileCsv.gs      顧客ID+金額単位の突合・レポート整形(本番用)
-src/Reconcile.gs         PDF側とシート側の月次サマリー比較・レポート整形(レガシー)
-src/Code.gs              カスタムメニュー(onOpen)とメイン処理(runCsvReconciliation / runReconciliation)
+src/SheetReader.gs       シート読み込み・対象タブの自動探索
+src/ReconcileCsv.gs      顧客ID+金額単位の突合・お振込金額の整合性チェック・レポート整形
+src/Code.gs              カスタムメニュー(onOpen)・メイン処理・月次自動実行トリガー
 test/                    Node.js (node --test) によるロジックのユニットテスト
 ```
 
-`src/*.gs` の純粋関数(`parseSbpsStatementCsv` / `reconcileWithCsv` / `verifyTransferAmount` /
-`formatCsvReconcileReport` / `expectedSheetNameForPeriod` / `parseStatementSummary` /
-`summarizeByMonth` / `reconcile` / `Utils.gs` の関数群)はGASのグローバルAPI(`DriveApp` 等)に
-依存しないため、Node.js から直接テストできます。GAS依存のI/O関数は
-`readCsvFileText` / `extractTextFromPdf` / `readSheetRows` / `findCsvTargetSheet` /
-`findTargetSheet` / `processFolderFiles` / `runCsvReconciliation` / `runReconciliation` /
-`onOpen` のみです。
+`src/*.gs` の純粋関数(`parseSbpsStatementCsv` / `reconcileWithCsv` /
+`verifyTransferAmount` / `formatCsvReconcileReport` / `expectedSheetNameForPeriod` /
+`Utils.gs` の関数群)はGASのグローバルAPI(`DriveApp` 等)に依存しないため、
+Node.js から直接テストできます。GAS依存のI/O関数は `readCsvFileText` /
+`readSheetRows` / `findCsvTargetSheet` / `processFolderFiles` /
+`runCsvReconciliation` / `runCsvReconciliationCore` / `runCsvReconciliationScheduled` /
+`createMonthlyCsvTrigger` / `removeMonthlyCsvTrigger` / `onOpen` のみです。
 
 ## セットアップ
 
@@ -164,9 +146,6 @@ test/                    Node.js (node --test) によるロジックのユニッ
 
 - [clasp](https://github.com/google/clasp) がインストールされていること (`npm i -g @google/clasp`)
 - 対象のGoogleアカウントでApps Script APIが有効化されていること
-- Google Cloud Console側で **Drive API** が有効化されていること
-  (Apps Scriptの「サービス」からDrive advanced serviceを追加した場合、
-  紐づくGCPプロジェクトでのAPI有効化も必要です。PDF版を使わない場合は不要です)
 
 ### 2. スクリプトのひも付け
 
@@ -182,15 +161,18 @@ clasp push
 
 新規にスタンドアロンのスクリプトを作る場合は `clasp create --type sheets --parentId <スプレッドシートID>` 等で作成してください。
 
+同じスプレッドシートに他のApps Scriptプロジェクト(例: 明細書作成ツール)が
+既に紐づいている場合は、`onOpen` などの関数名が重複しないよう、既存コードと
+あわせて1つの`onOpen`にまとめてください。
+
 ### 3. CONFIGの設定
 
 `src/Config.gs` を編集し、以下を実際の値に合わせてください。
 
 - `CSV_FOLDER_ID`: 収納明細書CSVをアップロードするDriveフォルダのID
-- `PDF_FOLDER_ID`: 収納明細書PDFをアップロードするDriveフォルダのID(PDF版を使う場合のみ)
 - `TARGET_SHEET_NAME`: 突合対象のシート(タブ)名を固定したい場合のみ設定する。
-  通常は空のままでよく、CSV版はCSVの集計期間から対象タブ名(例: `2608`)を
-  自動で推測します。タブの命名規則が「西暦下2桁+月2桁」と異なる場合はここで
+  通常は空のままでよく、CSVの集計期間から対象タブ名(例: `2608`)を自動で
+  推測します。タブの命名規則が「西暦下2桁+月2桁」と異なる場合はここで
   明示的に指定してください。
 - `COMPLETED_STATUS`: 「決済完了」を表す文字列(シートの実際の表記に合わせる)
 - `CSV_EXPORTED_COLUMN` / `CSV_EXPORTED_PENDING_VALUE` / `CSV_EXPORTED_DONE_VALUE`:
@@ -201,20 +183,16 @@ clasp push
   メールアドレス。空のままだと、自動実行を設定しても誰にも通知されず実行ログに
   残るだけになる
 
-CSV版は、`TARGET_SHEET_NAME` が空の場合、CSVの集計期間(例: `2026/08/01`)から
-推測したタブ名(例: `2608`)のシートをまず探します。それも見つからない場合は
+`TARGET_SHEET_NAME` が空の場合、CSVの集計期間(例: `2026/08/01`)から推測した
+タブ名(例: `2608`)のシートをまず探します。それも見つからない場合は
 `顧客ID` / `ステータス` / `合計` の3列をすべて持つシートを探索するフォールバックに
 入りますが、タブが複数ある実際の運用では複数ヒットしてエラーになる可能性が高いため、
-基本的には集計期間からの自動推測に頼ってください。PDF版(レガシー)は
-`対象月` / `ステータス` / `合計` の3列を持つシートを自動探索しますが、同じ理由で
-複数のタブがヒットしやすい点に注意してください。その場合は `TARGET_SHEET_NAME`
-で明示的に指定してください。
+基本的には集計期間からの自動推測に頼ってください。
 
 ### 4. 実行(手動)
 
 1. スプレッドシートを開き直す(カスタムメニューを表示するため)
-2. メニュー「売上確認」→「収納明細書(CSV)と自動照合(本番用)」を実行
-   (PDF版を使う場合は「収納明細書(PDF)と自動照合(月次サマリー)」)
+2. メニュー「売上確認」→「収納明細書(CSV)と自動照合」を実行
 3. 初回実行時は権限承認ダイアログが出るので許可する
 4. 実行完了後のアラートに簡易サマリーが表示される
 5. 詳細は Apps Script エディタの「実行数」(実行ログ)で確認する
@@ -240,15 +218,13 @@ CSV版は、`TARGET_SHEET_NAME` が空の場合、CSVの集計期間(例: `2026/
 
 ## テスト
 
-ロジック部分(CSV/PDFのパース・シート集計・突合)はNode.jsのテストランナーで検証できます。
+ロジック部分(CSVのパース・突合)はNode.jsのテストランナーで検証できます。
 
 ```bash
 npm test
 ```
 
-- `test/fixtures/sbps-statement-202608.csv` は実際の収納明細CSVのサンプル、
-  `test/fixtures/sheet-rows-csv-pending.json` は対応する売上管理シートの行の
-  サンプルです。`test/reconcileWithCsv.test.js` で、実データに対する顧客ID単位の
-  消し込みロジックを確認できます。
-- `test/fixtures/statement-202608.txt` / `test/fixtures/sheet-rows-202608.json` は
-  PDF版(レガシー)用のサンプルです。
+`test/fixtures/sbps-statement-202608.csv` は実際の収納明細CSVのサンプル、
+`test/fixtures/sheet-rows-csv-pending.json` は対応する売上管理シートの行の
+サンプルです。`test/reconcileWithCsv.test.js` で、実データに対する顧客ID単位の
+消し込みロジックを確認できます。

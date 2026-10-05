@@ -4,8 +4,7 @@
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('売上確認')
-    .addItem('収納明細書(PDF)と自動照合(月次サマリー)', 'runReconciliation')
-    .addItem('収納明細書(CSV)と自動照合(本番用)', 'runCsvReconciliation')
+    .addItem('収納明細書(CSV)と自動照合', 'runCsvReconciliation')
     .addSeparator()
     .addItem('月次の自動実行を設定する', 'createMonthlyCsvTrigger')
     .addItem('月次の自動実行を解除する', 'removeMonthlyCsvTrigger')
@@ -37,36 +36,6 @@ function processFolderFiles(folderId, mimeType, processFile) {
   }
 
   return { fileCount: fileCount, summaryLines: summaryLines };
-}
-
-/**
- * CONFIG.PDF_FOLDER_ID 配下のすべてのPDF(収納明細書)を対象に、
- * 売上管理シートの対象月別サマリーと突合し、結果を実行ログ(コンソール)に出力する。
- */
-function runReconciliation() {
-  var ui = SpreadsheetApp.getUi();
-  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  var targetSheet = findTargetSheet(spreadsheet, CONFIG);
-  var rows = readSheetRows(targetSheet);
-
-  var run = processFolderFiles(CONFIG.PDF_FOLDER_ID, MimeType.PDF, function (file) {
-    var text = extractTextFromPdf(file.getId());
-    var pdfSummary = parseStatementSummary(text);
-    var targetMonthLabel = monthLabelFromDate(pdfSummary.periodStart);
-    var sheetSummary = summarizeByMonth(rows, targetMonthLabel, CONFIG.COMPLETED_STATUS);
-    var result = reconcile(pdfSummary, sheetSummary);
-    var report = formatReconcileReport(result, targetMonthLabel, pdfSummary);
-
-    Logger.log('--- ' + file.getName() + ' ---\n' + report);
-    return file.getName() + ': ' + (result.isMatch ? '一致' : '差異あり(金額差 ' + formatYen(result.amountDiff) + ')');
-  });
-
-  if (run.fileCount === 0) {
-    ui.alert('指定フォルダ(CONFIG.PDF_FOLDER_ID)にPDF(収納明細書)が見つかりませんでした。');
-    return;
-  }
-
-  ui.alert('照合が完了しました。詳細は「実行数」の実行ログをご確認ください。\n\n' + run.summaryLines.join('\n'));
 }
 
 /**

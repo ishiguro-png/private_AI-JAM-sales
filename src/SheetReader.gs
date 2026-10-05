@@ -82,18 +82,6 @@ function resolveNamedSheet(spreadsheet, sheetName, requiredHeaders) {
 }
 
 /**
- * CONFIG.TARGET_SHEET_NAME で見つからない場合に、
- * 「対象月」「ステータス」「合計」列を持つシートを自動探索する(月次サマリー照合用)。
- * GAS専用のI/O関数。
- */
-function findTargetSheet(spreadsheet, config) {
-  var requiredHeaders = ['対象月', 'ステータス', '合計'];
-  var byName = resolveNamedSheet(spreadsheet, config.TARGET_SHEET_NAME, requiredHeaders);
-  if (byName) return byName;
-  return findSheetByHeaders(spreadsheet, requiredHeaders);
-}
-
-/**
  * CSVの集計期間(集計期間FROM。例: "2026/08/01")から、対応するタブ名を推測する。
  * 実際のスプレッドシートでは、月ごとに別タブ(例: "2608" = 2026年08月分)に
  * 分かれており、タブ名は「西暦下2桁+月2桁」になっている。
@@ -146,24 +134,4 @@ function findCsvTargetSheet(spreadsheet, config, expectedSheetName) {
   }
 
   return findSheetByHeaders(spreadsheet, requiredHeaders);
-}
-
-/**
- * 指定した対象月・ステータスに合致する行を集計する。
- * 副作用のない純粋関数。
- */
-function summarizeByMonth(rows, targetMonthLabel, completedStatus) {
-  var count = 0;
-  var totalAmount = 0;
-  var matchedRows = [];
-
-  rows.forEach(function (row) {
-    if (row['対象月'] !== targetMonthLabel) return;
-    if (row['ステータス'] !== completedStatus) return;
-    count += 1;
-    totalAmount += parseCurrencyToNumber(row['合計']);
-    matchedRows.push(row);
-  });
-
-  return { count: count, totalAmount: totalAmount, rows: matchedRows };
 }
