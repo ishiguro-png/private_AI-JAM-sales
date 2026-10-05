@@ -1,26 +1,18 @@
 /**
- * スプレッドシートを開いたときにカスタムメニューを追加する。
+ * onOpen() はこのファイルには置かない。
  *
- * 同じスプレッドシートに紐づく別のApps Script(「明細書作成」)が
- * 独自の onOpen() を持っていると、GASは同一プロジェクト内の関数名を
- * 1つしか認識できないため、片方のメニューが消える・上書きされる事故が起きる。
- * そのため「明細書作成」側の onOpen() は削除したうえで、そのメニューをここに統合する。
+ * 同一プロジェクト内(このファイル + 「明細書作成」のファイル)に onOpen() を
+ * 2つ定義すると、GASはファイル一覧の下にあるものを優先して上書きしてしまい、
+ * 上にある方のメニューが静かに消える(エラーにはならない)。
+ * 「明細書作成」側のファイル(コード.gs)にすでに両メニューを統合した onOpen() が
+ * あるため、重複を避けるためここでは定義しない。
+ *
+ * 売上確認メニューの中身(このツールが呼び出すメニュー項目名)は以下の通り:
+ *   - 収納明細書(CSV)と自動照合  → runCsvReconciliation
+ *   - 月次の自動実行を設定する    → createMonthlyCsvTrigger
+ *   - 月次の自動実行を解除する    → removeMonthlyCsvTrigger
+ * 「明細書作成」側の onOpen() にこの3項目を追加する形で統合すること。
  */
-function onOpen() {
-  SpreadsheetApp.getUi()
-    .createMenu('売上確認')
-    .addItem('収納明細書(CSV)と自動照合', 'runCsvReconciliation')
-    .addSeparator()
-    .addItem('月次の自動実行を設定する', 'createMonthlyCsvTrigger')
-    .addItem('月次の自動実行を解除する', 'removeMonthlyCsvTrigger')
-    .addToUi();
-
-  SpreadsheetApp.getUi()
-    .createMenu('🍓明細書作成')
-    .addItem('この月の明細書を作成', 'createMonthlyStatements')
-    .addItem('この月の保存フォルダを開く', 'openMonthlyStatementFolder')
-    .addToUi();
-}
 
 /**
  * folderId配下の指定mimeTypeのファイルを順に処理する共通ループ。
